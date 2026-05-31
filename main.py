@@ -82,13 +82,34 @@ def main():
             timeout = 30 # Thời gian chờ tối đa 30 giây
             start_time = time.time()
             is_redirected = False
+            omg_clicked = False
             
             while time.time() - start_time < timeout:
                 try:
-                    current_url = driver.current_url
-                    if "google.com" in current_url:
-                        is_redirected = True
+                    # Duyệt qua tất cả các tab đang mở (nếu quảng cáo mở tab mới) để tìm google.com
+                    for handle in driver.window_handles:
+                        driver.switch_to.window(handle)
+                        current_url = driver.current_url
+                        if "google.com" in current_url:
+                            is_redirected = True
+                            break
+                    if is_redirected:
                         break
+                        
+                    # Xử lý trang trung gian omg10.com
+                    if "omg10.com/afu.php" in current_url and not omg_clicked:
+                        try:
+                            print("  -> Đã nhận diện trang trung gian omg10.com, thực hiện click bất kỳ...")
+                            body = driver.find_element(By.TAG_NAME, "body")
+                            try:
+                                body.click() # Ưu tiên click thật bằng chuột Selenium
+                            except Exception:
+                                driver.execute_script("arguments[0].click();", body) # Dự phòng bằng Javascript
+                            omg_clicked = True
+                            time.sleep(2) # Chờ 2 giây sau khi click
+                            continue # Quay lại vòng lặp check URL tiếp theo
+                        except Exception:
+                            pass
                 except Exception:
                     pass
 
