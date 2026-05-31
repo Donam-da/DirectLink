@@ -23,11 +23,10 @@ def get_current_wifi_profile():
     return None
 
 def reconnect_wifi_windows(ssid):
-    print("Đang ngắt kết nối Wi-Fi...")
+    print(f"[*] Đang khởi động lại Wi-Fi: '{ssid}'...")
     subprocess.run(['netsh', 'wlan', 'disconnect'], capture_output=True)
-    time.sleep(3) # Đợi 3 giây để ngắt kết nối hoàn toàn
+    time.sleep(1) # Giảm thời gian chờ ngắt kết nối xuống 1s
     
-    print(f"Đang kết nối lại với mạng: '{ssid}'...")
     # Truyền lệnh dạng List thay vì String để tránh mọi lỗi liên quan đến khoảng trắng hay kí tự đặc biệt trong tên Wifi
     result = subprocess.run(['netsh', 'wlan', 'connect', f'name={ssid}'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
     
@@ -36,7 +35,7 @@ def reconnect_wifi_windows(ssid):
     
     # Nếu Windows báo thành công (tiếng Anh hoặc tiếng Việt) hoặc mã trả về = 0
     if result.returncode == 0 and ("successfully" in output.lower() or "thành công" in output.lower() or "hoàn tất" in output.lower()):
-        print("  -> Đã gửi lệnh kết nối tới hệ thống thành công!")
+        pass # Tắt bớt log thành công để terminal đỡ rối
     else:
         print(f"  -> [Cảnh báo] Phản hồi từ CMD: {output}")
         if error:
@@ -45,7 +44,7 @@ def reconnect_wifi_windows(ssid):
         # Lệnh dự phòng: Đôi khi Windows cần xác định rõ cả SSID và Name
         subprocess.run(['netsh', 'wlan', 'connect', f'ssid={ssid}', f'name={ssid}'], capture_output=True)
         
-    time.sleep(5) # Đợi 5 giây để card mạng bắt được IP và có Internet trở lại
+    time.sleep(3) # Giảm thời gian chờ kết nối xuống 3s để tăng tốc độ
 
 def main():
     # Tự động ghi nhớ tên Wi-Fi đang kết nối trước khi bắt đầu
@@ -60,10 +59,32 @@ def main():
     # Khởi tạo trình duyệt Chrome một lần duy nhất ở ngoài vòng lặp
     options = webdriver.ChromeOptions()
     options.add_argument("--incognito") # Chế độ ẩn danh
+    
+    # TỐI ƯU HÓA: Tăng tốc & Giảm tải RAM/CPU
+    options.page_load_strategy = 'eager' # Không chờ tải hình ảnh/video, chỉ cần HTML là chạy tiếp
+    options.add_argument("--disable-gpu") # Tắt xử lý đồ họa phần cứng
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-dev-shm-usage") # Tránh lỗi tràn RAM/Crash
+    options.add_argument("--no-sandbox")
+    
+    # TỐI ƯU HÓA: Không tải hình ảnh, CSS và Fonts để tiết kiệm tối đa thời gian và RAM
+    prefs = {
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.stylesheets": 2,
+        "profile.managed_default_content_settings.fonts": 2
+    }
+    options.add_experimental_option("prefs", prefs)
+    
     driver = webdriver.Chrome(options=options)
     
     try:
         while True:
+            # DỌN DẸP RAM: Đóng tất cả các tab quảng cáo thừa, chỉ giữ lại tab gốc
+            while len(driver.window_handles) > 1:
+                driver.switch_to.window(driver.window_handles[-1])
+                driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+
             print(f"\n--- Bắt đầu mở URL: {target_url} ---")
             
             # Xóa toàn bộ cookie để trình duyệt "sạch" cho mỗi lần lặp
@@ -75,7 +96,7 @@ def main():
                     driver.get(target_url)
                     break
                 except Exception:
-                    print("Internet chưa kết nối lại hoàn toàn, đang đợi thêm...")
+                    # Không in thông báo lặp lại liên tục để terminal sạch sẽ hơn
                     time.sleep(2)
             
             # Chờ và liên tục kiểm tra xem URL trình duyệt có chứa 'google.com' không
@@ -106,7 +127,7 @@ def main():
                             except Exception:
                                 driver.execute_script("arguments[0].click();", body) # Dự phòng bằng Javascript
                             omg_clicked = True
-                            time.sleep(2) # Chờ 2 giây sau khi click
+                            time.sleep(1) # Rút ngắn thời gian chờ sau click
                             continue # Quay lại vòng lặp check URL tiếp theo
                         except Exception:
                             pass
@@ -131,7 +152,7 @@ def main():
                                         # Sử dụng Javascript click để vượt qua các overlay quảng cáo ẩn nếu có
                                         driver.execute_script("arguments[0].click();", cb)
                                         print("  -> Đã tick tự động vào ô xác thực Captcha/Cloudflare!")
-                                        time.sleep(2) # Chờ 2 giây để trang xử lý sau khi ấn
+                                        time.sleep(1)
                                         break
                             except Exception:
                                 pass
@@ -145,7 +166,7 @@ def main():
                         if btn.is_displayed() and any(kw in btn.text.lower() for kw in keywords):
                             driver.execute_script("arguments[0].click();", btn)
                             print(f"  -> Đã tự động nhấn nút: {btn.text.strip()}")
-                            time.sleep(2)
+                            time.sleep(1)
                             break
                 except Exception:
                     pass
@@ -154,7 +175,7 @@ def main():
                 time.sleep(1) # Kiểm tra mỗi giây 1 lần
             
             if is_redirected:
-                print("Đã phát hiện chuyển hướng sang Google! Thực hiện reset Wi-Fi...")
+                print("  -> Đã tới Google! Tiến hành Reset Wi-Fi...")
                 reconnect_wifi_windows(current_wifi)
             else:
                 print("Hết thời gian chờ nhưng không thấy chuyển sang Google. Đang thử lại...")
