@@ -106,7 +106,7 @@ class DirectLinkApp:
     def reconnect_wifi_windows(self, ssid):
         self.log(f"Đang khởi động lại Wi-Fi: '{ssid}'...")
         subprocess.run(['netsh', 'wlan', 'disconnect'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        time.sleep(0.5) # Rút ngắn thời gian chờ mạng ngắt hoàn toàn
+        time.sleep(0.3) # Giảm thêm thời gian chờ ngắt mạng
         
         result = subprocess.run(['netsh', 'wlan', 'connect', f'name={ssid}'], capture_output=True, text=True, encoding='utf-8', errors='ignore', creationflags=subprocess.CREATE_NO_WINDOW)
         output = result.stdout.strip()
@@ -119,8 +119,8 @@ class DirectLinkApp:
             
         self.log("Đang chờ mạng kết nối thành công...")
         if self.wait_for_internet():
-            self.log("Đã kết nối! Chờ thêm 1.5s cho mạng thật sự ổn định...")
-            time.sleep(1.5)
+            self.log("Đã kết nối! Chờ thêm 1.0s cho mạng thật sự ổn định...")
+            time.sleep(1.0) # Giảm thời gian chờ ổn định mạng xuống 1s
 
     def wait_for_internet(self, timeout=15):
         start_time = time.time()
@@ -286,7 +286,7 @@ class DirectLinkApp:
                     body = driver.find_element(By.TAG_NAME, "body")
                     driver.execute_script("arguments[0].click();", body)
                     omg_clicked = True
-                    time.sleep(0.2)
+                    time.sleep(0.1)
                     continue
                     
                 iframes = driver.find_elements(By.TAG_NAME, "iframe")
@@ -308,7 +308,7 @@ class DirectLinkApp:
                             """
                             if driver.execute_script(js_checkbox):
                                 self.log(f"[{short_url}] Đã tick Cloudflare/Captcha!")
-                                time.sleep(0.2)
+                                time.sleep(0.1)
                                 break
                         except Exception:
                             pass
@@ -331,11 +331,11 @@ class DirectLinkApp:
                 """
                 if driver.execute_script(js_click_btn):
                     self.log(f"[{short_url}] Đã click nút xác minh.")
-                    time.sleep(0.2)
+                    time.sleep(0.1)
             except Exception:
                 pass
             
-            time.sleep(0.2) # Tiếp tục giảm thời gian nghỉ xuống 0.2s để vòng quét web chạy cực nhanh
+            time.sleep(0.1) # Tăng tốc độ quét web lên mức tối đa (0.1s/lần)
         
         if not self.is_running:
             return
