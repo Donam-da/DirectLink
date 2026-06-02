@@ -173,7 +173,7 @@ class DirectLinkApp:
     def bot_task(self, wifi, urls, is_headless):
         options = webdriver.ChromeOptions()
         options.add_argument("--incognito")
-        options.page_load_strategy = 'eager'
+        options.page_load_strategy = 'none' # Không chờ trang load (Tăng tốc web tối đa)
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
         options.add_argument("--disable-dev-shm-usage")
@@ -266,7 +266,7 @@ class DirectLinkApp:
                 break
             except Exception:
                 if not self.is_running: return
-                time.sleep(0.5)
+                time.sleep(0.1)
         
         timeout = 30
         start_time = time.time()
@@ -335,7 +335,7 @@ class DirectLinkApp:
             except Exception:
                 pass
             
-            time.sleep(0.1) # Tăng tốc độ quét web lên mức tối đa (0.1s/lần)
+            time.sleep(0.05) # Quét phần tử trên web cực nhanh với chu kỳ 0.05s
         
         if not self.is_running:
             return
