@@ -3,7 +3,7 @@ import socket
 import subprocess
 import threading
 import tkinter as tk
-from tkinter import scrolledtext, messagebox
+from tkinter import scrolledtext, messagebox, ttk
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
@@ -60,8 +60,20 @@ class DirectLinkApp:
         self.url_entries[0].insert(0, "https://cryptolinkforearn.com/dl/eSYY2EjO")
 
         # Options
+        opt_frame = tk.Frame(root)
+        opt_frame.grid(row=2, column=0, columnspan=2, sticky="w", padx=pad_x, pady=pad_y)
+        
         self.headless_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(root, text="Chạy ngầm (Tiết kiệm RAM/CPU tối đa)", variable=self.headless_var, font=("Arial", 10)).grid(row=2, column=1, sticky="w", padx=pad_x)
+        tk.Checkbutton(opt_frame, text="Chạy ngầm", variable=self.headless_var, font=("Arial", 10)).pack(side="left")
+
+        tk.Label(opt_frame, text=" | Tự nghỉ sau:", font=("Arial", 10)).pack(side="left", padx=(10, 2))
+        self.loop_threshold_var = tk.StringVar(value="Không nghỉ")
+        ttk.Combobox(opt_frame, textvariable=self.loop_threshold_var, values=["Không nghỉ", "50", "100", "150", "200"], width=10, state="readonly").pack(side="left")
+
+        tk.Label(opt_frame, text="vòng, nghỉ", font=("Arial", 10)).pack(side="left", padx=2)
+        self.rest_duration_var = tk.StringVar(value="60")
+        ttk.Combobox(opt_frame, textvariable=self.rest_duration_var, values=["30", "60", "90", "120"], width=4, state="readonly").pack(side="left")
+        tk.Label(opt_frame, text="s", font=("Arial", 10)).pack(side="left")
 
         # Buttons
         btn_frame = tk.Frame(root)
@@ -78,6 +90,9 @@ class DirectLinkApp:
         stats_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=pad_x, pady=(10, 0))
         tk.Label(stats_frame, text="Nhật ký hoạt động:", font=("Arial", 10, "bold")).pack(side="left")
         
+        self.countdown_label = tk.Label(stats_frame, text="", font=("Arial", 10, "bold"), fg="#FF5722")
+        self.countdown_label.pack(side="left", padx=20)
+
         self.avg_time_label = tk.Label(stats_frame, text="Tốc độ TB: 0.0s/vòng", font=("Arial", 10, "bold"), fg="#9C27B0")
         self.avg_time_label.pack(side="right")
         
@@ -98,6 +113,12 @@ class DirectLinkApp:
         self.log_area.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {message}\n")
         self.log_area.see(tk.END)
         self.log_area.config(state="disabled")
+
+    def clear_log(self):
+        self.log_area.config(state="normal")
+        self.log_area.delete('1.0', tk.END)
+        self.log_area.config(state="disabled")
+        self.log("Đã tự động dọn dẹp Cache, Dữ liệu và Nhật ký hoạt động!")
 
     def update_stats_ui(self, count, avg_time):
         self.loop_count_label.config(text=f"Số vòng lặp: {count}")
@@ -154,6 +175,7 @@ class DirectLinkApp:
         self.loop_count = 0
         self.total_loop_time = 0.0
         self.update_stats_ui(0, 0.0)
+        self.countdown_label.config(text="")
 
         # Khởi chạy trong Thread riêng để không block giao diện
         self.thread = threading.Thread(target=self.bot_task, args=(wifi, urls, self.headless_var.get()), daemon=True)
@@ -171,6 +193,11 @@ class DirectLinkApp:
         self.stop_btn.config(state="disabled" if not is_running else "normal")
 
     def bot_task(self, wifi, urls, is_headless):
+        threshold_val = self.loop_threshold_var.get()
+        rest_val = self.rest_duration_var.get()
+        threshold = int(threshold_val) if threshold_val.isdigit() else 0
+        rest_duration = int(rest_val) if rest_val.isdigit() else 60
+
         options = webdriver.ChromeOptions()
         options.add_argument("--incognito")
         options.page_load_strategy = 'none' # Không chờ trang load (Tăng tốc web tối đa)
@@ -191,55 +218,78 @@ class DirectLinkApp:
         }
         options.add_experimental_option("prefs", prefs)
         
-        drivers = []
-        try:
-            self.log(f"Đang khởi động {len(urls)} luồng Chrome...")
-            for i in range(len(urls)):
-                if not self.is_running:
-                    break
-                drivers.append(webdriver.Chrome(options=options))
-                
-            if len(drivers) < len(urls):
-                raise Exception("Bị dừng khi đang khởi động trình duyệt.")
-            
-            while self.is_running:
-                loop_start_time = time.time()
-                threads = []
-                for i, url in enumerate(urls):
+        while self.is_running:
+            drivers = []
+            try:
+                self.log(f"Đang khởi động {len(urls)} luồng Chrome...")
+                for i in range(len(urls)):
                     if not self.is_running:
                         break
-                    t = threading.Thread(target=self.run_single_driver, args=(drivers[i], url))
-                    t.start()
-                    threads.append(t)
-                
-                # Chờ tất cả các luồng chạy xong vòng lặp hiện tại
-                for t in threads:
-                    t.join()
-                
-                if not self.is_running:
-                    break
-
-                self.log("-> Tất cả URL đã hoàn tất! Chuẩn bị Reset Wi-Fi...")
-                self.reconnect_wifi_windows(wifi)
-                
-                if self.is_running:
-                    duration = time.time() - loop_start_time
-                    self.loop_count += 1
-                    self.total_loop_time += duration
-                    avg_time = self.total_loop_time / self.loop_count
-                    self.root.after(0, lambda c=self.loop_count, a=avg_time: self.update_stats_ui(c, a))
+                    drivers.append(webdriver.Chrome(options=options))
                     
-        except Exception as e:
-            self.log(f"Lỗi hệ thống Chrome: {e}")
-        finally:
-            for d in drivers:
-                try:
-                    d.quit()
-                except Exception:
-                    pass
-            self.is_running = False
-            self.root.after(0, lambda: self.set_buttons_state(False))
-            self.log("=== ĐÃ DỪNG HOÀN TOÀN ===")
+                if len(drivers) < len(urls):
+                    raise Exception("Bị dừng khi đang khởi động trình duyệt.")
+                
+                while self.is_running:
+                    loop_start_time = time.time()
+                    threads = []
+                    for i, url in enumerate(urls):
+                        if not self.is_running:
+                            break
+                        t = threading.Thread(target=self.run_single_driver, args=(drivers[i], url))
+                        t.start()
+                        threads.append(t)
+                    
+                    # Chờ tất cả các luồng chạy xong vòng lặp hiện tại
+                    for t in threads:
+                        t.join()
+                    
+                    if not self.is_running:
+                        break
+
+                    if self.is_running:
+                        duration = time.time() - loop_start_time
+                        self.loop_count += 1
+                        self.total_loop_time += duration
+                        avg_time = self.total_loop_time / self.loop_count
+                        self.root.after(0, lambda c=self.loop_count, a=avg_time: self.update_stats_ui(c, a))
+                        
+                        if threshold > 0 and self.loop_count > 0 and self.loop_count % threshold == 0:
+                            self.log(f"Đã đạt {threshold} vòng. Đóng trình duyệt để giải phóng RAM...")
+                            break # Thoát vòng lặp nhỏ để quit driver
+                            
+                        # NẾU KHÔNG NGHỈ: Reset Wi-Fi bình thường và chạy tiếp
+                        self.log("-> Tất cả URL đã hoàn tất! Chuẩn bị Reset Wi-Fi...")
+                        self.reconnect_wifi_windows(wifi)
+                        
+            except Exception as e:
+                if self.is_running:
+                    self.log(f"Lỗi hệ thống Chrome: {e}")
+            finally:
+                for d in drivers:
+                    try:
+                        d.quit()
+                    except Exception:
+                        pass
+
+            if not self.is_running:
+                break
+                
+            if threshold > 0 and self.loop_count > 0 and self.loop_count % threshold == 0:
+                self.log(f"Bắt đầu nghỉ ngơi {rest_duration}s...")
+                self.root.after(0, self.clear_log) # Tự động xóa sạch nhật ký UI
+                for i in range(rest_duration, 0, -1):
+                    if not self.is_running: break
+                    self.root.after(0, lambda sec=i: self.countdown_label.config(text=f"Nghỉ: {sec}s"))
+                    time.sleep(1)
+                self.root.after(0, lambda: self.countdown_label.config(text=""))
+                if self.is_running:
+                    self.log("Đã nghỉ xong, chuẩn bị Reset Wi-Fi lấy IP mới để chạy tiếp...")
+                    self.reconnect_wifi_windows(wifi)
+
+        self.is_running = False
+        self.root.after(0, lambda: self.set_buttons_state(False))
+        self.log("=== ĐÃ DỪNG HOÀN TOÀN ===")
 
     def run_single_driver(self, driver, url):
         short_url = url[-8:] if len(url) > 8 else url
